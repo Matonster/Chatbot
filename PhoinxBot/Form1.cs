@@ -14,6 +14,10 @@ namespace PhoinxBot
     {
         static IRC bot;
 
+        System.Windows.Forms.Button b;
+        System.Windows.Forms.RichTextBox r;
+        System.Windows.Forms.TextBox t;
+
         //Delegate
         delegate void SetTextCallback(string form, string text);
 
@@ -21,9 +25,33 @@ namespace PhoinxBot
         public Form1()
         {
             InitializeComponent();
+            InitForm();
             InitDBData();
             InitIRC();
             InitTabs();
+        }
+
+        private void InitForm()
+        {
+            this.Text = Properties.Settings.Default.Username;
+            this.ActiveControl = fldQuery;
+            tabs.Selected += new TabControlEventHandler(TabSwitch);
+        }
+
+        private void TabSwitch(object sender, EventArgs e)
+        {
+            if (tabs.TabIndex == 1)
+            {
+                this.ActiveControl = t;
+            }
+            else if (tabs.TabIndex == 0)
+            {   
+                if(this.AcceptButton == btnSend)
+                    this.AcceptButton = b;
+                else if(this.AcceptButton == b)
+                    this.AcceptButton = btnSend;
+                this.ActiveControl = fldQuery;
+            }
         }
 
         //Create tables if new db
@@ -35,6 +63,7 @@ namespace PhoinxBot
                 query += "CREATE TABLE IF NOT EXISTS commands (command varchar(50), text varchar(255), channel varchar(50));";
                 query += "CREATE TABLE IF NOT EXISTS permits (user varchar(50), channel varchar(50));";
                 query += "CREATE TABLE IF NOT EXISTS blacklist (type int(1), text varchar(255), channel varchar(50));";
+                //query += "INSERT INTO channels (name) VALUES ('matonster');";
 
                 SQLiteCommand command = new SQLiteCommand(query, dbCon);
                 command.ExecuteNonQuery();
@@ -64,9 +93,6 @@ namespace PhoinxBot
 
                     tab.Name = name;
 
-                    System.Windows.Forms.Button b;
-                    System.Windows.Forms.RichTextBox r;
-                    System.Windows.Forms.TextBox t;
 
                     b = new System.Windows.Forms.Button();
                     t = new System.Windows.Forms.TextBox();
@@ -146,7 +172,7 @@ namespace PhoinxBot
             }
             else
             {
-                bot.SendMessage("PRIVMSG #" + tag + " :" + query.Text);
+                bot.SendMessage(query.Text);
             }
 
             query.Text = "";

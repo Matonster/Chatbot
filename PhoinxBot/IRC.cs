@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading;
 using System.Data.SQLite;
 using System.Text.RegularExpressions;
+using System.Collections.Concurrent;
 
 
 namespace PhoinxBot
@@ -20,10 +21,10 @@ namespace PhoinxBot
         StreamWriter Writer;
 
         //Special vars
-        Dictionary<string, bool> pollOpen;
-        Dictionary<string, Dictionary<string, Dictionary<string, int>>> pollVotes;
-        Dictionary<string, bool> antiSpoil;
-        Dictionary<string, Dictionary<string, int>> blackList;
+        ConcurrentDictionary<string, bool> pollOpen;
+        ConcurrentDictionary<string, ConcurrentDictionary<string, ConcurrentDictionary<string, int>>> pollVotes;
+        ConcurrentDictionary<string, bool> antiSpoil;
+        ConcurrentDictionary<string, ConcurrentDictionary<string, int>> blackList;
 
         //Spoiler regex
         Regex spoilers;
@@ -31,11 +32,13 @@ namespace PhoinxBot
         //Listen thread
         Thread listen;
 
+        string channel;
+
         //Constructor
         public IRC()
         {
             //Opens connection to the twitch IRC
-            Client = new TcpClient("irc.twitch.tv", 6667);
+            Client = new TcpClient("irc.twitch.tv", 443);
             NwStream = Client.GetStream();
             Reader = new StreamReader(NwStream, Encoding.GetEncoding("iso8859-1"));
             Writer = new StreamWriter(NwStream, Encoding.GetEncoding("iso8859-1"));
@@ -45,10 +48,10 @@ namespace PhoinxBot
             listen.Start();
 
             //Special vars initialized
-            pollOpen = new Dictionary<string,bool>();
-            pollVotes = new Dictionary<string, Dictionary<string, Dictionary<string, int>>>();
-            antiSpoil = new Dictionary<string, bool>();
-            blackList = new Dictionary<string, Dictionary<string, int>>();
+            pollOpen = new ConcurrentDictionary<string,bool>();
+            pollVotes = new ConcurrentDictionary<string, ConcurrentDictionary<string, ConcurrentDictionary<string, int>>>();
+            antiSpoil = new ConcurrentDictionary<string, bool>();
+            blackList = new ConcurrentDictionary<string, ConcurrentDictionary<string, int>>();
 
             //Writes userdata to twitch - remember your username and password!
             Writer.WriteLine("USER " + Properties.Settings.Default.Username + "tmi twitch :" + Properties.Settings.Default.Username);
@@ -84,7 +87,7 @@ namespace PhoinxBot
             pollVotes["#" + name] = null;
             antiSpoil["#" + name] = false;
 
-            Dictionary<string, int> tmpBL = new Dictionary<string, int>();
+            ConcurrentDictionary<string, int> tmpBL = new ConcurrentDictionary<string, int>();
 
             //Builds the chans blacklist table
             using (SQLiteConnection dbCon = new SQLiteConnection("Data Source=Database.sqlite;Version=3;"))
@@ -96,15 +99,15 @@ namespace PhoinxBot
 
                 while (reader.Read())
                 {
-                    tmpBL.Add((string)reader["text"], (int)reader["type"]);
+                    tmpBL.TryAdd((string)reader["text"], (int)reader["type"]);
                 }
                 dbCon.Close();
             }
             //Anti ascii spam thingy
-            tmpBL.Add("â", 0);
+            tmpBL.TryAdd("â", 0);
 
             //Adds to "global" scope var
-            blackList.Add("#" + name, tmpBL);
+            blackList.TryAdd("#" + name, tmpBL);
 
             Writer.WriteLine("JOIN #" + name + "\n");
             Writer.Flush();
@@ -236,13 +239,13 @@ namespace PhoinxBot
                                         {
                                             qUpdate = "DELETE FROM commands WHERE channel = '" + _channel + "' AND command = '" + _name + "'";
                                             Console.WriteLine("CMD DELETED!");
-                                            SendMessage("PRIVMSG " + _channel + " :Command " + _name + " deleted!");
+                                            SendMessage("Command " + _name + " deleted!");
                                         }
                                         else
                                         {
                                             qUpdate = "UPDATE commands SET text = '" + _text + "' WHERE channel = '" + _channel + "' AND command = '" + _name + "'";
                                             Console.WriteLine("CMD UPDATED! (" + _name + " -> " + _text + ")");
-                                            SendMessage("PRIVMSG " + _channel + " :Command " + _name + " updated!");
+                                            SendMessage("Command " + _name + " updated!");
                                         }
 
                                         SQLiteCommand cUpdate = new SQLiteCommand(qUpdate, dbCon);
@@ -254,127 +257,127 @@ namespace PhoinxBot
                                         SQLiteCommand cInsert = new SQLiteCommand(qInsert, dbCon);
                                         cInsert.ExecuteNonQuery();
                                         Console.WriteLine("CMD ADDED! (" + _name + " -> " + _text + ")");
-                                        SendMessage("PRIVMSG " + _channel + " :Command " + _name + " added!");
+                                        SendMessage("Command " + _name + " added!");
                                     }
                                     dbCon.Close();
                                 }
                             }
                         }
 
-                        //Poll commands
-                        else if (_message.StartsWith("!poll") && isOp(_channel, _nick))
-                        {
-                            string[] cmd = _message.Replace("!poll", "").TrimStart(' ').TrimEnd(' ').Split(' ');
-                            //If you just enter !poll it posts the current status (not running or cmds to vote with)
-                            if (cmd[0] == "")
-                            {
-                                if (pollOpen[_channel])
-                                {
-                                    string answers = "";
-                                    foreach (KeyValuePair<string, Dictionary<string, int>> entry in pollVotes[_channel])
-                                    {
-                                        answers += "\"!" + entry.Key + "\", ";
-                                    }
+                        ////Poll commands
+                        //else if (_message.StartsWith("!poll") && isOp(_channel, _nick))
+                        //{
+                        //    string[] cmd = _message.Replace("!poll", "").TrimStart(' ').TrimEnd(' ').Split(' ');
+                        //    //If you just enter !poll it posts the current status (not running or cmds to vote with)
+                        //    if (cmd[0] == "")
+                        //    {
+                        //        if (pollOpen[_channel])
+                        //        {
+                        //            string answers = "";
+                        //            foreach (KeyValuePair<string, ConcurrentDictionary<string, int>> entry in pollVotes[_channel])
+                        //            {
+                        //                answers += "\"!" + entry.Key + "\", ";
+                        //            }
 
-                                    answers = answers.TrimEnd(' ').TrimEnd(',');
+                        //            answers = answers.TrimEnd(' ').TrimEnd(',');
 
-                                    SendMessage("PRIVMSG " + _channel + " :You can vote using " + answers);
-                                }
-                                else
-                                {
-                                    SendMessage("PRIVMSG " + _channel + " :No poll running!");
-                                }
-                            }
-                            //Open a poll with minimum 2 possible answers
-                            else if (cmd[0] == "open" && cmd.Length > 2)
-                            {
-                                //Poll is already open
-                                if (pollOpen[_channel])
-                                {
-                                    SendMessage("PRIVMSG " + _channel + " :Poll is already open!");
-                                }
-                                else
-                                {
-                                    //Inserts the answers into our kinda deep array with strings as keys w00t
-                                    Dictionary<string, Dictionary<string, int>> votes = new Dictionary<string, Dictionary<string, int>>();
-                                    for (int i = 1; i < cmd.Length; i++)
-                                    {
-                                        string tmpan = cmd[i].TrimEnd(' ').TrimStart(' ');
-                                        if (tmpan != "")
-                                        {
-                                            votes[tmpan] = new Dictionary<string, int>();
-                                        }
-                                    }
+                        //            SendMessage("You can vote using " + answers);
+                        //        }
+                        //        else
+                        //        {
+                        //            SendMessage("No poll running!");
+                        //        }
+                        //    }
+                        //    //Open a poll with minimum 2 possible answers
+                        //    else if (cmd[0] == "open" && cmd.Length > 2)
+                        //    {
+                        //        //Poll is already open
+                        //        if (pollOpen[_channel])
+                        //        {
+                        //            SendMessage("Poll is already open!");
+                        //        }
+                        //        else
+                        //        {
+                        //            //Inserts the answers into our kinda deep array with strings as keys w00t
+                        //            ConcurrentDictionary<string, ConcurrentDictionary<string, int>> votes = new ConcurrentDictionary<string, ConcurrentDictionary<string, int>>();
+                        //            for (int i = 1; i < cmd.Length; i++)
+                        //            {
+                        //                string tmpan = cmd[i].TrimEnd(' ').TrimStart(' ');
+                        //                if (tmpan != "")
+                        //                {
+                        //                    votes[tmpan] = new ConcurrentDictionary<string, int>();
+                        //                }
+                        //            }
 
-                                    //Inserts this into our special vars
-                                    pollVotes[_channel] = votes;
-                                    pollOpen[_channel] = true;
+                        //            //Inserts this into our special vars
+                        //            pollVotes[_channel] = votes;
+                        //            pollOpen[_channel] = true;
 
-                                    //Posts the initial message - opened, how to vote
-                                    string answers = "";
-                                    foreach (KeyValuePair<string, Dictionary<string, int>> entry in pollVotes[_channel])
-                                    {
-                                        answers += "\"!" + entry.Key + "\", ";
-                                    }
+                        //            //Posts the initial message - opened, how to vote
+                        //            string answers = "";
+                        //            foreach (KeyValuePair<string, ConcurrentDictionary<string, int>> entry in pollVotes[_channel])
+                        //            {
+                        //                answers += "\"!" + entry.Key + "\", ";
+                        //            }
 
-                                    answers = answers.TrimEnd(' ').TrimEnd(',');
-                                    SendMessage("PRIVMSG " + _channel + " :Poll started! You can vote using " + answers);
-                                }
-                            }
-                            //Displays the current result (result/close) and can close if (close)
-                            else if (cmd[0] == "result" || cmd[0] == "close")
-                            {
-                                //Poll not open
-                                if (!pollOpen[_channel])
-                                {
-                                    SendMessage("PRIVMSG " + _channel + " :No poll running!");
-                                }
-                                else
-                                {
-                                    //Array with the results
-                                    Dictionary<string, int> res = new Dictionary<string, int>();
-                                    int total = 0;
+                        //            answers = answers.TrimEnd(' ').TrimEnd(',');
+                        //            SendMessage("Poll started! You can vote using " + answers);
+                        //        }
+                        //    }
+                        //    //Displays the current result (result/close) and can close if (close)
+                        //    else if (cmd[0] == "result" || cmd[0] == "close")
+                        //    {
+                        //        //Poll not open
+                        //        if (!pollOpen[_channel])
+                        //        {
+                        //            SendMessage("No poll running!");
+                        //        }
+                        //        else
+                        //        {
+                        //            //Array with the results
+                        //            ConcurrentDictionary<string, int> res = new ConcurrentDictionary<string, int>();
+                        //            int total = 0;
 
-                                    //Find the number of votes for each answer and gets the total amount of votes
-                                    foreach (KeyValuePair<string, Dictionary<string, int>> entry in pollVotes[_channel])
-                                    {
-                                        res[entry.Key] = pollVotes[_channel][entry.Key].Count;
-                                        total += pollVotes[_channel][entry.Key].Count;
-                                    }
+                        //            //Find the number of votes for each answer and gets the total amount of votes
+                        //            foreach (KeyValuePair<string, ConcurrentDictionary<string, int>> entry in pollVotes[_channel])
+                        //            {
+                        //                res[entry.Key] = pollVotes[_channel][entry.Key].Count;
+                        //                total += pollVotes[_channel][entry.Key].Count;
+                        //            }
 
-                                    string votes = "";
+                        //            string votes = "";
 
-                                    //Then we round it and insert it nicely into a string
-                                    foreach (KeyValuePair<string, int> entry in res)
-                                    {
-                                        double pc = 0;
-                                        int perc = 0;
+                        //            //Then we round it and insert it nicely into a string
+                        //            foreach (KeyValuePair<string, int> entry in res)
+                        //            {
+                        //                double pc = 0;
+                        //                int perc = 0;
 
-                                        if (total > 0)
-                                        {
-                                            pc = (double) entry.Value / (double) total * (double) 100;
-                                            perc = (int) Math.Round(pc);
-                                        }
+                        //                if (total > 0)
+                        //                {
+                        //                    pc = (double) entry.Value / (double) total * (double) 100;
+                        //                    perc = (int) Math.Round(pc);
+                        //                }
 
-                                        votes += "\"" + entry.Key + "\" (" + perc + "%), ";
-                                    }
+                        //                votes += "\"" + entry.Key + "\" (" + perc + "%), ";
+                        //            }
 
-                                    votes = votes.TrimEnd(' ').TrimEnd(',');
+                        //            votes = votes.TrimEnd(' ').TrimEnd(',');
 
-                                    //We either just display the result or display result AND close the poll
-                                    if (cmd[0] == "result")
-                                    {
-                                        SendMessage("PRIVMSG " + _channel + " :Current result is: " + votes + " - Total votes: " + total);
-                                    }
-                                    else if (cmd[0] == "close")
-                                    {
-                                        pollOpen[_channel] = false;
-                                        pollVotes[_channel] = null;
-                                        SendMessage("PRIVMSG " + _channel + " :Poll closed! Result is: " + votes + " - Total votes: " + total);
-                                    }
-                                }
-                            }
-                        }
+                        //            //We either just display the result or display result AND close the poll
+                        //            if (cmd[0] == "result")
+                        //            {
+                        //                SendMessage("Current result is: " + votes + " - Total votes: " + total);
+                        //            }
+                        //            else if (cmd[0] == "close")
+                        //            {
+                        //                pollOpen[_channel] = false;
+                        //                pollVotes[_channel] = null;
+                        //                SendMessage("Poll closed! Result is: " + votes + " - Total votes: " + total);
+                        //            }
+                        //        }
+                        //    }
+                        //}
 
                         //Blacklists certain words
                         else if (_message.StartsWith("!blist") && isOp(_channel, _nick))
@@ -429,9 +432,9 @@ namespace PhoinxBot
                                             SQLiteCommand cUpdate = new SQLiteCommand(qUpdate, dbCon);
                                             cUpdate.ExecuteNonQuery();
 
-                                            blackList[_channel].Add(_btext, Convert.ToInt16(_btype));
+                                            blackList[_channel].TryAdd(_btext, Convert.ToInt16(_btype));
 
-                                            SendMessage("PRIVMSG " + _channel + " :Blacklist for " + _btext + " added!");
+                                            SendMessage("Blacklist for " + _btext + " added!");
                                         }
                                         else if (_xist && cmd[0] == "remove")
                                         {
@@ -440,10 +443,11 @@ namespace PhoinxBot
 
                                             SQLiteCommand cUpdate = new SQLiteCommand(qUpdate, dbCon);
                                             cUpdate.ExecuteNonQuery();
-                                            
-                                            blackList[_channel].Remove(_btext);
 
-                                            SendMessage("PRIVMSG " + _channel + " :Blacklist for " + _btext + " removed!");
+                                            int Fail1;
+                                            blackList[_channel].TryRemove(_btext, out Fail1);
+
+                                            SendMessage("Blacklist for " + _btext + " removed!");
                                         }
                                         dbCon.Close();
                                     }
@@ -468,7 +472,7 @@ namespace PhoinxBot
                                 }
 
                                 blist = blist.TrimEnd(' ').TrimEnd(',');
-                                SendMessage("PRIVMSG " + _channel + " :Blacklist is: " + blist);
+                                SendMessage("Blacklist is: " + blist);
                             }
                         }
 
@@ -478,12 +482,12 @@ namespace PhoinxBot
                             string[] cmd = _message.Replace("!antispoil", "").TrimStart(' ').TrimEnd(' ').Split(' ');
                             if (cmd[0] == "on")
                             {
-                                SendMessage("PRIVMSG " + _channel + " :Anti-spoiler enabled! Avoid typing result-like comments - you will be timed out.");
+                                SendMessage("Anti-spoiler enabled! Avoid typing result-like comments - you will be timed out.");
                                 antiSpoil[_channel] = true;
                             }
                             else if (cmd[0] == "off")
                             {
-                                SendMessage("PRIVMSG " + _channel + " :Anti-spoiler disabled! Go crazy!");
+                                SendMessage("Anti-spoiler disabled! Go crazy!");
                                 antiSpoil[_channel] = false;
                             }
 
@@ -551,13 +555,13 @@ namespace PhoinxBot
                                 cmds = cmds.TrimEnd(' ').TrimEnd('|').TrimEnd(' ');
                                 dbCon.Close();
                             }
-                            SendMessage("PRIVMSG " + _channel + " :Commands are: " + cmds);
+                            SendMessage("Commands are: " + cmds);
                         }
 
                         //Displays the current time in CEST
                         else if (_message.StartsWith("!time"))
                         {
-                            SendMessage("PRIVMSG " + _channel + " :Current time: " + DateTime.Now.ToString("HH:mm:ss") + " CEST");
+                            SendMessage("Current time: " + DateTime.Now.ToString("HH:mm:ss") + " CEST");
                         }
 
                         //Check for votes and custom commands - votes will override custom cmds, since they are temporary
@@ -565,28 +569,32 @@ namespace PhoinxBot
                         {
                             string _cmd = _message.Replace("!", "").TrimEnd(' ').TrimStart(' ');
 
-                            //Votes
-                            if (pollVotes[_channel].ContainsKey(_cmd))
-                            {
-                                string[] ans = _message.TrimEnd(' ').TrimStart(' ').Split(' ');
-                                if (ans.Length > 1 && pollVotes[_channel].ContainsKey(ans[1]))
-                                {
-                                    if (!pollVotes[_channel][ans[1]].ContainsKey(_nick))
-                                    {
-                                        foreach (KeyValuePair<string, Dictionary<string, int>> entry in pollVotes[_channel])
-                                        {
-                                            if (pollVotes[_channel][entry.Key].ContainsKey(_nick))
-                                            {
-                                                pollVotes[_channel][entry.Key].Remove(_nick);
-                                            }
-                                        }
-                                        pollVotes[_channel][ans[1]].Add(_nick, 1);
-                                    }
-                                }
-                            }
-                            //Custom cmds
-                            else
-                            {
+                            ////Votes
+                            //if (pollOpen[_channel])
+                            //{
+                            //    if (pollVotes[_channel].ContainsKey(_cmd))
+                            //    {
+                            //        string[] ans = _message.TrimEnd(' ').TrimStart(' ').Split(' ');
+                            //        if (ans.Length > 1 && pollVotes[_channel].ContainsKey(ans[1]))
+                            //        {
+                            //            if (!pollVotes[_channel][ans[1]].ContainsKey(_nick))
+                            //            {
+                            //                foreach (KeyValuePair<string, ConcurrentDictionary<string, int>> entry in pollVotes[_channel])
+                            //                {
+                            //                    if (pollVotes[_channel][entry.Key].ContainsKey(_nick))
+                            //                    {
+                            //                        int Fail1;
+                            //                        pollVotes[_channel][entry.Key].TryRemove(_nick, out Fail1);
+                            //                    }
+                            //                }
+                            //                pollVotes[_channel][ans[1]].TryAdd(_nick, 1);
+                            //            }
+                            //        }
+                            //    }
+                            //}
+                            ////Custom cmds
+                            //else
+                            //{
                                 //Check if it exists and post the text
                                 using (SQLiteConnection dbCon = new SQLiteConnection("Data Source=Database.sqlite;Version=3;"))
                                 {
@@ -604,11 +612,11 @@ namespace PhoinxBot
 
                                     if (_text != "")
                                     {
-                                        SendMessage("PRIVMSG " + _channel + " :" + _text);
+                                        SendMessage("" + _text);
                                     }
                                     dbCon.Close();
                                 }
-                            }
+                            //}
                         }
                         //Check all messages for blacklisted commands (and ascii art-crap) and spoilers (if enabled)
                         else if(_channel.Contains('#'))
@@ -617,8 +625,8 @@ namespace PhoinxBot
                             if (antiSpoil[_channel] && spoilers.IsMatch(_message))
                             {
                                 Console.WriteLine("Spoiler by " + _nick);
-                                SendMessage("PRIVMSG " + _channel + " :/timeout " + _nick + " 1");
-                                SendMessage("PRIVMSG " + _channel + " :" + _nick + " no spoilers pls!");
+                                SendMessage("/timeout " + _nick + " 1");
+                                SendMessage("" + _nick + " no spoilers pls!");
                             }
                             
                             //Check blacklist
@@ -628,32 +636,41 @@ namespace PhoinxBot
                                 {
                                     if (x.Value == 1)
                                     {
-                                        SendMessage("PRIVMSG " + _channel + " :/ban " + _nick);
-                                        SendMessage("PRIVMSG " + _channel + " :" + _nick + " received ban for blacklisted message");
+                                        SendMessage("/ban " + _nick);
+                                        SendMessage("" + _nick + " received ban for blacklisted message");
                                     }
                                     else
                                     {
-                                        SendMessage("PRIVMSG " + _channel + " :/timeout " + _nick + " 1");
-                                        //SendMessage("PRIVMSG " + _channel + " :" + _nick + " reveiced 1s timeout for blacklisted message");
+                                        SendMessage("/timeout " + _nick + " 1");
+                                        //SendMessage("" + _nick + " reveiced 1s timeout for blacklisted message");
                                     }
                                 }
-                            }
-                        }
+                            }   
+                            channel = _channel;
+
+                        }            
+
                     }
                 }
             }
             catch (Exception e)
             {
+                System.Windows.Forms.MessageBox.Show(e.Message);
                 listen.Abort();
+                listen.Start();
             }
         }
 
         //Sends a message and adds it to the mainform
         public void SendMessage(string message)
         {
-            Writer.WriteLine(message);
-            Program.mainForm.AddLine("", message);
-            Writer.Flush();
+            if (message != "")
+            {
+                Writer.WriteLine("PRIVMSG " + channel + " :" + message);
+                Program.mainForm.AddLine("", "PRIVMSG " + channel + " :" + message);
+                Program.mainForm.AddLine(channel, "<" + DateTime.Now.ToString("HH:mm:ss") + "> <" + Properties.Settings.Default.Username + "> " + message);
+                Writer.Flush();
+            }
         }
     }
 }

@@ -35,3 +35,13 @@ E:\GLADOS\Dropbox\PhoinxBot\PhoinxBot\obj\x86\Debug\PhoinxBot.Form1.resources
 E:\GLADOS\Dropbox\PhoinxBot\PhoinxBot\obj\x86\Debug\PhoinxBot.Properties.Resources.resources
 E:\GLADOS\Dropbox\PhoinxBot\PhoinxBot\obj\x86\Debug\GenerateResource.read.1.tlog
 E:\GLADOS\Dropbox\PhoinxBot\PhoinxBot\obj\x86\Debug\GenerateResource.write.1.tlog
+C:\Users\Matonster\Documents\GitHub\Chatbot\PhoinxBot\bin\Debug\PhoinxBot.exe.config
+C:\Users\Matonster\Documents\GitHub\Chatbot\PhoinxBot\obj\x86\Debug\PhoinxBot.exe
+C:\Users\Matonster\Documents\GitHub\Chatbot\PhoinxBot\obj\x86\Debug\PhoinxBot.pdb
+C:\Users\Matonster\Documents\GitHub\Chatbot\PhoinxBot\bin\Debug\PhoinxBot.exe
+C:\Users\Matonster\Documents\GitHub\Chatbot\PhoinxBot\bin\Debug\PhoinxBot.pdb
+C:\Users\Matonster\Documents\GitHub\Chatbot\PhoinxBot\bin\Debug\System.Data.SQLite.xml
+C:\Users\Matonster\Documents\GitHub\Chatbot\PhoinxBot\obj\x86\Debug\PhoinxBot.csprojResolveAssemblyReference.cache
+C:\Users\Matonster\Documents\GitHub\Chatbot\PhoinxBot\obj\x86\Debug\PhoinxBot.Form1.resources
+C:\Users\Matonster\Documents\GitHub\Chatbot\PhoinxBot\obj\x86\Debug\PhoinxBot.Properties.Resources.resources
+C:\Users\Matonster\Documents\GitHub\Chatbot\PhoinxBot\obj\x86\Debug\PhoinxBot.csproj.GenerateResource.Cache
